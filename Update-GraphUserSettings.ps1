@@ -243,9 +243,9 @@ function Process-GraphBatch
 
 # script requries User.ReadWrite.All
 
-# $tenant       = "contoso.onmicrosoft.com"
-# $clientId     = "xxxxxxx-xxxx-xxxx-xxxx-xxxxxxx"                # aka "Application ID" in Azure Portal > Azure Active Directory > App Registrations
-# $clientSecret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"     # aka "Keys" in Azure Portal > Azure Active Directory > App Registrations
+$tenant       = "contoso.onmicrosoft.com"
+$clientId     = "xxxxxxx-xxxx-xxxx-xxxx-xxxxxxx"                # aka "Application ID" in Azure Portal > Azure Active Directory > App Registrations
+$clientSecret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"     # aka "Keys" in Azure Portal > Azure Active Directory > App Registrations
 
 $contributionToContentDiscoveryDisabled = $false
 
