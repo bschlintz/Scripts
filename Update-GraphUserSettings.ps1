@@ -253,7 +253,7 @@ $tenant       = "contoso.onmicrosoft.com"
 $clientId     = "xxxxxxx-xxxx-xxxx-xxxx-xxxxxxx"                # aka "Application ID" in Azure Portal > Azure Active Directory > App Registrations
 $clientSecret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"     # aka "Keys" in Azure Portal > Azure Active Directory > App Registrations
 
-$contributionToContentDiscoveryDisabled = $false
+$contributionToContentDiscoveryDisabled = $true
 
 # Graph $batch limit is 20
 # https://developer.microsoft.com/en-us/graph/docs/concepts/known_issues#json-batching
