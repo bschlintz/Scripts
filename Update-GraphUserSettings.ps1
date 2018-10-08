@@ -188,7 +188,7 @@ function Create-UserSettingsBatchPayload
     process
     {
         @{
-            "requests" = @(1..$batch.Count | ForEach-Object { 
+            "requests" = @(1..$UserPrincipalNames.Count | ForEach-Object { 
                 @{
                     "id" = $_
                     "method" = "PATCH"
@@ -278,7 +278,7 @@ if( $token.AccessToken )
         $batch = $batches[$idx].Group
         Write-Host "Processing Batch: $($idx + 1) of $($batches.Length) [Batch Size: $($batch.Count)]"
 
-        $batchPayload = Create-UserSettingsBatchPayload -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $ContributionToContentDiscoveryDisabled
+        $batchPayload = Create-UserSettingsBatchPayload -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $contributionToContentDiscoveryDisabled
 
         Process-GraphBatch -Payload $batchPayload -AccessToken $token.AccessToken
     }
