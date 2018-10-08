@@ -1,7 +1,13 @@
 <# 
  Microsoft provides programming examples for illustration only, without warranty either expressed or
  implied, including, but not limited to, the implied warranties of merchantability and/or fitness 
- for a particular purpose. 
+ for a particular purpose. We grant You a nonexclusive, royalty-free right to use and modify the 
+ Sample Code and to reproduce and distribute the object code form of the Sample Code, provided that
+ You agree: (i) to not use Our name, logo, or trademarks to market Your software product in which the
+ Sample Code is embedded; (ii) to include a valid copyright notice on Your software product in which
+ the Sample Code is embedded; and (iii) to indemnify, hold harmless, and defend Us and Our suppliers
+ from and against any claims or lawsuits, including attorneys' fees, that arise or result from the
+ use or distribution of the Sample Code.
  
  This sample assumes that you are familiar with the programming language being demonstrated and the 
  tools used to create and debug procedures. Microsoft support professionals can help explain the 
@@ -158,7 +164,7 @@ function Update-UserSettings
             }
             else
             {
-                Write-Error "Erorr updating user settings: $UserPrincipalName. Error: $($_.Exception)"
+                Write-Error "Error updating user settings: $UserPrincipalName. Error: $($_.Exception)"
             }
         }
     }
@@ -224,15 +230,15 @@ function Process-GraphBatch
 
             foreach ($batchResponse in $response.responses) 
             {
-                if ($batchResponse.status -gt 400)
+                if ($batchResponse.status -ge 400)
                 {
-                    Write-Error "Erorr in Batch $($batchResponse.id). Error: $($batchResponse.body.error.message)"
+                    Write-Error "Error in Batch $($batchResponse.id). Error: $(ConvertTo-Json $batchResponse.body.error -Depth 5)"
                 }
             }             
         }
         catch
         {
-            Write-Error "Erorr sending batch request. Error: $($_.Exception)"
+            Write-Error "Error sending batch request. Error: $($_.Exception)"
         }
     }
     end
@@ -263,7 +269,7 @@ if( $token.AccessToken )
     Write-Host "Fetching Users..."
     $allUsers = Get-AllUsers -AccessToken $token.AccessToken | Select-Object -ExpandProperty userPrincipalName
 
-    Write-Host "Slitting $($allUsers.Count) users into $([Math]::Ceiling($allUsers.Count / $batchSize)) batches..."
+    Write-Host "Splitting $($allUsers.Count) users into $([Math]::Ceiling($allUsers.Count / $batchSize)) batches..."
     $batches = Split-ArrayIntoChunks -Array $allUsers -ChunkSize $batchSize
 
     # Iterate each batch of users  to create Graph $batch JSON payload
