@@ -112,7 +112,7 @@ function Get-AllUsers
     {
         $users = @()
         $headers = Get-AuthenticationHeaders -AccessToken $AccessToken
-        $uri = "https://graph.microsoft.com/v1.0/users?`$select=userPrincipalName"
+        $uri = "https://graph.microsoft.com/v1.0/users?`$select=userPrincipalName&`$filter=userType eq 'Member'" #Exclude Guest Accounts
     }
     process
     {
