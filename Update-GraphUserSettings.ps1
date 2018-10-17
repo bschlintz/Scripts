@@ -17,6 +17,12 @@
  line at (800) 936-5200. 
 #>
 
+# Script Parameters
+param 
+(
+    [switch]$ReportOnly
+)
+
 # https://www.nuget.org/packages/Microsoft.IdentityModel.Clients.ActiveDirectory/ 
 Add-Type -Path "C:\Packages\microsoft.identitymodel.clients.activedirectory.3.19.8\lib\net45\Microsoft.IdentityModel.Clients.ActiveDirectory.dll"
 Add-Type -Path "C:\Packages\microsoft.identitymodel.clients.activedirectory.3.19.8\lib\net45\Microsoft.IdentityModel.Clients.ActiveDirectory.Platform.dll"
@@ -132,48 +138,7 @@ function Get-AllUsers
     }
 }
 
-function Update-UserSettings
-{
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(Mandatory=$true)][string]$UserPrincipalName,
-        [Parameter(Mandatory=$true)][bool]$ContributionToContentDiscoveryDisabled,
-        [Parameter(Mandatory=$true)][string]$AccessToken
-    )
-
-    begin
-    {
-        $headers = Get-AuthenticationHeaders -AccessToken $AccessToken
-        $uri = "https://graph.microsoft.com/v1.0/users/$UserPrincipalName/settings"
-        $body = @{
-            "contributionToContentDiscoveryDisabled" = $ContributionToContentDiscoveryDisabled
-        }
-    }
-    process
-    {
-        try
-        {
-            $response = Invoke-RestMethod -Uri $uri -Headers $headers -Body (ConvertTo-Json $body) -Method Patch
-        }
-        catch
-        {
-            if(  $_.Exception.Response.StatusCode.value__ -eq 404 )
-            {
-                Write-Error "A user with upn $UserPrincipalName was not found."
-            }
-            else
-            {
-                Write-Error "Error updating user settings: $UserPrincipalName. Error: $($_.Exception)"
-            }
-        }
-    }
-    end
-    {
-    }
-}
-
-function Create-UserSettingsBatchPayload 
+function Create-UpdateUserSettingsBatchPayload 
 {
     [CmdletBinding()]
     param
@@ -196,6 +161,37 @@ function Create-UserSettingsBatchPayload
                     "body" = @{
                         "contributionToContentDiscoveryDisabled" = $ContributionToContentDiscoveryDisabled
                     }
+                    "headers" = @{
+                        "Content-Type" = "application/json"
+                    }
+                }
+            })
+        } | ConvertTo-Json -Depth 3 -Compress
+    }
+    end
+    {
+    }
+}
+
+function Create-GetUserSettingsBatchPayload 
+{
+    [CmdletBinding()]
+    param
+    (
+        [Parameter(Mandatory=$true)][string[]]$UserPrincipalNames
+    )
+
+    begin
+    {
+    }
+    process
+    {
+        @{
+            "requests" = @(1..$UserPrincipalNames.Count | ForEach-Object { 
+                @{
+                    "id" = $UserPrincipalNames[$_-1]
+                    "method" = "GET"
+                    "url" = "/users/$($UserPrincipalNames[$_-1])/settings?`$select=contributionToContentDiscoveryDisabled"
                     "headers" = @{
                         "Content-Type" = "application/json"
                     }
@@ -243,6 +239,7 @@ function Process-GraphBatch
     }
     end
     {
+        $response
     }
 }
 
@@ -272,20 +269,46 @@ if( $token.AccessToken )
     Write-Host "Splitting $($allUsers.Count) users into $([Math]::Ceiling($allUsers.Count / $batchSize)) batches..."
     $batches = Split-ArrayIntoChunks -Array $allUsers -ChunkSize $batchSize
 
-    # Iterate each batch of users  to create Graph $batch JSON payload
+    if ($ReportOnly)
+    {
+        # Remove existing CSV if there is one on -ReportOnly mode
+        Remove-Item -Path "DelveUserSettingsReport.csv" -Force -ErrorAction SilentlyContinue
+    }
+
+    # Iterate each batch of users to create Graph $batch JSON payload
     for ($idx = 0; $idx -lt $batches.Length; $idx++) 
     {
         $batch = $batches[$idx].Group
-        Write-Host "Processing Batch: $($idx + 1) of $($batches.Length) [Batch Size: $($batch.Count)]"
 
-        $batchPayload = Create-UserSettingsBatchPayload -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $contributionToContentDiscoveryDisabled
+        if ($ReportOnly)
+        {
+            Write-Host "Processing Batch: $($idx + 1) of $($batches.Length) [Batch Size: $($batch.Count)]`t-ReportOnly"
 
-        Process-GraphBatch -Payload $batchPayload -AccessToken $token.AccessToken
+            $batchPayload = Create-GetUserSettingsBatchPayload -UserPrincipalNames $batch
+
+            $result = Process-GraphBatch -Payload $batchPayload -AccessToken $token.AccessToken
+
+            foreach ($batchResponse in $result.responses) 
+            {
+                $userPrincipalName = $batchResponse.id
+                $currentSetting = $batchResponse.body.contributionToContentDiscoveryDisabled
+
+                if ($null -ne $currentSetting -and $currentSetting -ne $contributionToContentDiscoveryDisabled)
+                {
+                    [PSCustomObject] @{
+                        UserPrincipalName = $userPrincipalName
+                        ContributionToContentDiscoveryDisabled = $currentSetting
+                    } | Export-Csv -Path "DelveUserSettingsReport.csv" -NoTypeInformation -Append
+                }
+            }
+        }
+        else 
+        {
+            Write-Host "Processing Batch: $($idx + 1) of $($batches.Length) [Batch Size: $($batch.Count)]"
+
+            $batchPayload = Create-UpdateUserSettingsBatchPayload -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $contributionToContentDiscoveryDisabled
+    
+            Process-GraphBatch -Payload $batchPayload -AccessToken $token.AccessToken | Out-Null
+        }
     }
-
-    # foreach ($user in $allUsers)
-    # {
-    #     Write-Host "Updating user:" $user.userPrincipalName
-	#     Update-UserSettings -UserPrincipalName $user.userPrincipalName -ContributionToContentDiscoveryDisabled $contributionToContentDiscoveryDisabled -AccessToken $token.AccessToken
-    # }    
 }
