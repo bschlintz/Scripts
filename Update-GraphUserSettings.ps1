@@ -17,6 +17,33 @@
  line at (800) 936-5200. 
 #>
 
+<#
+ .SYNOPSIS
+  Script to report and update on the Delve ContributionToContentDiscoveryDisabled setting for all tenant users (excluding guest accounts).
+
+ .DESCRIPTION
+  Script to report and update on the Delve ContributionToContentDiscoveryDisabled setting.
+
+ .PARAMETER ReportOnly
+  Generate a CSV report of all users that would be updated with the specified ContributionToContentDiscoveryDisabled parameter setting. No updates will be made when using this switch.
+
+ .PARAMETER ContributionToContentDiscoveryDisabled
+  When set to $true, the delegate access to the user's trending API is disabled. 
+  When set to $true, documents in the user's Office Delve are disabled. 
+  When set to $true, the relevancy of the content displayed in Office 365, for example in Suggested sites in SharePoint Home and the Discover view in OneDrive for Business is affected. 
+  Users can control this setting in Office Delve.
+
+ .EXAMPLE
+  .\Update-GraphUserSettings.ps1 -ContributionToContentDiscoveryDisabled $true -ReportOnly
+
+  Generate a CSV report of all users which currently have the ContributionToContentDiscoveryDisabled set to FALSE.
+
+ .EXAMPLE
+  .\Update-GraphUserSettings.ps1 -ContributionToContentDiscoveryDisabled $true
+
+  Update all users to set ContributionToContentDiscoveryDisabled to TRUE.
+#>
+
 # Script Parameters
 param 
 (
