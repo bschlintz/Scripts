@@ -20,7 +20,8 @@
 # Script Parameters
 param 
 (
-    [switch]$ReportOnly
+    [Parameter(Mandatory=$false)][switch]$ReportOnly,
+    [Parameter(Mandatory=$true)][bool]$ContributionToContentDiscoveryDisabled
 )
 
 # https://www.nuget.org/packages/Microsoft.IdentityModel.Clients.ActiveDirectory/ 
@@ -138,7 +139,7 @@ function Get-AllUsers
     }
 }
 
-function Create-UpdateUserSettingsBatchPayload 
+function CreateBatch-UpdateUserSettings 
 {
     [CmdletBinding()]
     param
@@ -153,16 +154,16 @@ function Create-UpdateUserSettingsBatchPayload
     process
     {
         @{
-            "requests" = @(1..$UserPrincipalNames.Count | ForEach-Object { 
+            "requests" = @(foreach($userPrincipalName in $UserPrincipalNames) { 
                 @{
-                    "id" = $_
+                    "id" = $userPrincipalName
+                    "url" = "/users/$userPrincipalName/settings"
                     "method" = "PATCH"
-                    "url" = "/users/$($UserPrincipalNames[$_-1])/settings"
-                    "body" = @{
-                        "contributionToContentDiscoveryDisabled" = $ContributionToContentDiscoveryDisabled
-                    }
                     "headers" = @{
                         "Content-Type" = "application/json"
+                    }
+                    "body" = @{
+                        "contributionToContentDiscoveryDisabled" = $ContributionToContentDiscoveryDisabled
                     }
                 }
             })
@@ -173,7 +174,7 @@ function Create-UpdateUserSettingsBatchPayload
     }
 }
 
-function Create-GetUserSettingsBatchPayload 
+function CreateBatch-GetUserSettings 
 {
     [CmdletBinding()]
     param
@@ -187,11 +188,11 @@ function Create-GetUserSettingsBatchPayload
     process
     {
         @{
-            "requests" = @(1..$UserPrincipalNames.Count | ForEach-Object { 
+            "requests" = @(foreach($userPrincipalName in $UserPrincipalNames) { 
                 @{
-                    "id" = $UserPrincipalNames[$_-1]
+                    "id" = $userPrincipalName
+                    "url" = "/users/$userPrincipalName/settings"
                     "method" = "GET"
-                    "url" = "/users/$($UserPrincipalNames[$_-1])/settings?`$select=contributionToContentDiscoveryDisabled"
                     "headers" = @{
                         "Content-Type" = "application/json"
                     }
@@ -228,7 +229,7 @@ function Process-GraphBatch
             {
                 if ($batchResponse.status -ge 400)
                 {
-                    Write-Error "Error in Batch $($batchResponse.id). Error: $(ConvertTo-Json $batchResponse.body.error -Depth 5)"
+                    Write-Error "Error in batch request: $($batchResponse.id). Error: $(ConvertTo-Json $batchResponse.body.error -Depth 5)"
                 }
             }             
         }
@@ -249,8 +250,6 @@ function Process-GraphBatch
 $tenant       = "contoso.onmicrosoft.com"
 $clientId     = "xxxxxxx-xxxx-xxxx-xxxx-xxxxxxx"                # aka "Application ID" in Azure Portal > Azure Active Directory > App Registrations
 $clientSecret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"     # aka "Keys" in Azure Portal > Azure Active Directory > App Registrations
-
-$contributionToContentDiscoveryDisabled = $true
 
 # Graph $batch limit is 20
 # https://developer.microsoft.com/en-us/graph/docs/concepts/known_issues#json-batching
@@ -284,7 +283,7 @@ if( $token.AccessToken )
         {
             Write-Host "Processing Batch: $($idx + 1) of $($batches.Length) [Batch Size: $($batch.Count)]`t-ReportOnly"
 
-            $batchPayload = Create-GetUserSettingsBatchPayload -UserPrincipalNames $batch
+            $batchPayload = CreateBatch-GetUserSettings -UserPrincipalNames $batch
 
             $result = Process-GraphBatch -Payload $batchPayload -AccessToken $token.AccessToken
 
@@ -293,7 +292,7 @@ if( $token.AccessToken )
                 $userPrincipalName = $batchResponse.id
                 $currentSetting = $batchResponse.body.contributionToContentDiscoveryDisabled
 
-                if ($null -ne $currentSetting -and $currentSetting -ne $contributionToContentDiscoveryDisabled)
+                if ($null -ne $currentSetting -and $currentSetting -ne $ContributionToContentDiscoveryDisabled)
                 {
                     [PSCustomObject] @{
                         UserPrincipalName = $userPrincipalName
@@ -306,7 +305,7 @@ if( $token.AccessToken )
         {
             Write-Host "Processing Batch: $($idx + 1) of $($batches.Length) [Batch Size: $($batch.Count)]"
 
-            $batchPayload = Create-UpdateUserSettingsBatchPayload -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $contributionToContentDiscoveryDisabled
+            $batchPayload = CreateBatch-UpdateUserSettings -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $contributionToContentDiscoveryDisabled
     
             Process-GraphBatch -Payload $batchPayload -AccessToken $token.AccessToken | Out-Null
         }
