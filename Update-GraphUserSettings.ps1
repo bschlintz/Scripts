@@ -305,7 +305,7 @@ if( $token.AccessToken )
         {
             Write-Host "Processing Batch: $($idx + 1) of $($batches.Length) [Batch Size: $($batch.Count)]"
 
-            $batchPayload = CreateBatch-UpdateUserSettings -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $contributionToContentDiscoveryDisabled
+            $batchPayload = CreateBatch-UpdateUserSettings -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $ContributionToContentDiscoveryDisabled
     
             Process-GraphBatch -Payload $batchPayload -AccessToken $token.AccessToken | Out-Null
         }
