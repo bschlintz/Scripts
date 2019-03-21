@@ -28,6 +28,8 @@
   Expects a CSV file called TargetListForms.csv to be in the same directory as the script. 
   CSV should have a siteUrl and listTitle columns.
 
+  Supported List Templates: 100, 102, 103, 105, 106, 107
+  
   NOTE: This script requires the PowerShell module 'SharePointPnPPowerShellOnline' to be installed. If it is missing, the script will attempt to install it.
 
   RECOMMENDATION: Add administrator username and password for your tenant to Windows Credential Manager before running script. 
