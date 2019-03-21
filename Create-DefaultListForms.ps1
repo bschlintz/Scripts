@@ -30,6 +30,9 @@
 
   NOTE: This script requires the PowerShell module 'SharePointPnPPowerShellOnline' to be installed. If it is missing, the script will attempt to install it.
 
+  RECOMMENDATION: Add administrator username and password for your tenant to Windows Credential Manager before running script. 
+  https://github.com/SharePoint/PnP-PowerShell/wiki/How-to-use-the-Windows-Credential-Manager-to-ease-authentication-with-PnP-PowerShell
+
   .PARAMETER CSVPath
   Specify the path to a CSV file containing siteUrl and listTitle fields.
 
