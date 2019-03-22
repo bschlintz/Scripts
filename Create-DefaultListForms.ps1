@@ -79,7 +79,7 @@ $webpartTemplate = @"
 Function Create-DefaultListForm
 {
     param(
-        [parameter(Mandatory=$true)][Microsoft.SharePoint.Client.List]$List, 
+        [parameter(Mandatory=$true)]$List, 
         [parameter(Mandatory=$true)][string]$FormUrl, 
         [parameter(Mandatory=$true)][ValidateSet("Display", "Edit", "New")]$FormType
     )
