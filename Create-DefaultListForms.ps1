@@ -20,15 +20,17 @@
 <#
   .SYNOPSIS
   Script to create default list forms (New, Edit, Display) if they are missing. 
+  Will also re-add missing Form Webpart to existing list forms if they are missing. 
   Expects a CSV file called TargetListForms.csv to be in the same directory as the script. 
   CSV should have a siteUrl and listTitle columns.
 
  .DESCRIPTION
   Script to create default list forms (New, Edit, Display) if they are missing. 
+  Will also re-add missing Form Webpart to existing list forms if they are missing. 
   Expects a CSV file called TargetListForms.csv to be in the same directory as the script. 
   CSV should have a siteUrl and listTitle columns.
 
-  Supported List Templates: 100, 102, 103, 105, 106, 107
+  Tested with List Templates: 100, 102, 103, 104, 105, 106, 107, 108
   
   NOTE: This script requires the PowerShell module 'SharePointPnPPowerShellOnline' to be installed. If it is missing, the script will attempt to install it.
 
@@ -113,24 +115,33 @@ Function Create-DefaultListForm
         }
 
         try
-        {
-            #Check if form already exists
-            $List.Context.Load($List.Forms)
-            $List.Context.ExecuteQuery()
-            if ($null -ne $List.Forms -and $List.Forms.Count -gt 0) {
-                $existingForm = $list.Forms | Where-Object { $_.ServerRelativeUrl.ToLower() -eq $FormUrl.ToLower() }
-                if ($null -ne $existingForm) {
-                    Write-Warning "  [Form Already Exists] $FormUrl"
-                    return;
-                }                
+        {           
+            #Check if form page already exists
+            $listPages = Get-PnPProperty -ClientObject $List.RootFolder -Property Files
+            $formPage = $listPages | Where-Object { $_.ServerRelativeUrl.ToLower() -eq $FormUrl.ToLower() }
+
+            if ($null -eq $formPage) {
+                Write-Output "  [Creating Form Page] $FormUrl"
+
+                #Create Form
+                $formPage = $List.RootFolder.Files.AddTemplateFile($FormUrl, [Microsoft.SharePoint.Client.TemplateFileType]::FormPage)            
             }
-            Write-Output "  [Creating Form] $FormUrl"
+            else {
+                #Form page exists, check if form is recognized by list (i.e. form page has a form webpart on it)
+                $listForms = Get-PnPProperty -ClientObject $List -Property Forms
+    
+                if ($null -ne $listForms -and $listForms.Count -gt 0) {
+                    $existingForm = $list.Forms | Where-Object { $_.ServerRelativeUrl.ToLower() -eq $FormUrl.ToLower() }
+                    if ($null -ne $existingForm) {
+                        Write-Warning "  [Form Already Exists] $FormUrl"
+                        return;
+                    }                
+                }
+            }
 
-            #Create Form
-            $form = $List.RootFolder.Files.AddTemplateFile($FormUrl, [Microsoft.SharePoint.Client.TemplateFileType]::FormPage)
-
+            Write-Output "  [Adding Form Webpart] $FormUrl"
             #Get Webpart Manager for Form
-            $wpm = $form.GetLimitedWebPartManager([Microsoft.SharePoint.Client.WebParts.PersonalizationScope]::Shared)
+            $wpm = $formPage.GetLimitedWebPartManager([Microsoft.SharePoint.Client.WebParts.PersonalizationScope]::Shared)
 
             #Import Webpart on page
             $wp = $wpm.ImportWebPart($webpartXml)
