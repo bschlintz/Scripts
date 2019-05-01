@@ -52,15 +52,20 @@ $module = Get-Module -Name SharePointPnPPowerShellOnline
 
 Connect-PnPOnline -Url $TenantRootSiteUrl
 
+$context = Get-PnPContext
+if ($null -eq $context) {
+    Write-Error "Unable to successfully connect to SPO tenant with URL: $($TenantRootSiteUrl)"
+    break
+}
+
+$timestamp = (Get-Date).ToString("yyyyMMdd.HHmm")
+$csvName = "ExternalSites-$timestamp.csv"
+
 Write-Host "LOADING SITES..."
 $allSites = Get-PnPTenantSite
 
 $sitesWithExternalSharing = $allSites | Where-Object {$_.SharingCapability -ne 'Disabled'}
-$context = Get-PnPContext
 $tenant = [Microsoft.Online.SharePoint.TenantManagement.Office365Tenant]::new($context)
-
-$timestamp = (Get-Date).ToString("yyyyMMdd.HHmm")
-$csvName = "ExternalSites-$timestamp.csv"
 
 foreach ($externalSite in $sitesWithExternalSharing) 
 {
