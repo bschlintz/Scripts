@@ -34,7 +34,7 @@
 #>
 
 param(
-    [parameter(Mandatory=$true)]$TenantRootSiteUrl
+    [parameter(Mandatory = $true)]$TenantRootSiteUrl
 )
 
 #############################################
@@ -64,25 +64,24 @@ $csvName = "ExternalSites-$timestamp.csv"
 Write-Host "LOADING SITES..."
 $allSites = Get-PnPTenantSite
 
-$sitesWithExternalSharing = $allSites | Where-Object {$_.SharingCapability -ne 'Disabled'}
+$sitesWithExternalSharing = $allSites | Where-Object { $_.SharingCapability -ne 'Disabled' }
 $tenant = [Microsoft.Online.SharePoint.TenantManagement.Office365Tenant]::new($context)
 
-foreach ($externalSite in $sitesWithExternalSharing) 
-{
+foreach ($externalSite in $sitesWithExternalSharing) {
     Write-Host "SITE: $($externalSite.Url)"
 
-	$externalUsers = $tenant.GetExternalUsersForSite($externalSite.Url, 0, 1, "", [Microsoft.Online.SharePoint.TenantManagement.SortOrder]::Descending)
+    $externalUsers = $tenant.GetExternalUsersForSite($externalSite.Url, 0, 1, "", [Microsoft.Online.SharePoint.TenantManagement.SortOrder]::Descending)
 
-	$context.Load($externalUsers)
-	$context.ExecuteQuery()
+    $context.Load($externalUsers)
+    $context.ExecuteQuery()
 		
-	[PSCustomObject](@{
-		SiteUrl = $externalSite.Url
-		SharingCapability = $externalSite.SharingCapability.ToString()
-		ShowPeoplePickerSuggestionsForGuestUsers = $externalSite.ShowPeoplePickerSuggestionsForGuestUsers
-		TotalExternalUserCount = $externalUsers.TotalUserCount
-	}) | Select-Object -Property SiteUrl, SharingCapability, ShowPeoplePickerSuggestionsForGuestUsers, TotalExternalUserCount `
-	   | Export-Csv -Path $csvName -NoTypeInformation -Append
+    [PSCustomObject](@{
+            SiteUrl                                  = $externalSite.Url
+            SharingCapability                        = $externalSite.SharingCapability.ToString()
+            ShowPeoplePickerSuggestionsForGuestUsers = $externalSite.ShowPeoplePickerSuggestionsForGuestUsers
+            TotalExternalUserCount                   = $externalUsers.TotalUserCount
+        }) | Select-Object -Property SiteUrl, SharingCapability, ShowPeoplePickerSuggestionsForGuestUsers, TotalExternalUserCount `
+    | Export-Csv -Path $csvName -NoTypeInformation -Append
 }
 
 Write-Host "REPORT: $((Get-ChildItem $csvName).FullName)"
