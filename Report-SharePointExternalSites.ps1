@@ -41,8 +41,22 @@ param(
 
 $module = Get-Module -Name SharePointPnPPowerShellOnline -ListAvailable
 if ($null -eq $module) {
-    Write-Output "Installing PowerShell Module: SharePointPnPPowerShellOnline"
-    Install-Module -Name SharePointPnPPowerShellOnline -Force -AllowClobber -Confirm:$false
+    try {
+        # Check if we're in an elevated PowerShell console
+        if ([bool](([System.Security.Principal.WindowsIdentity]::GetCurrent()).Groups -match "S-1-5-32-544")){
+            Write-Output "Installing PowerShell Module: SharePointPnPPowerShellOnline (AllUsers)"
+            Install-Module -Name SharePointPnPPowerShellOnline -Force -AllowClobber -Confirm:$false -Scope AllUsers
+        } 
+        # Else if we're not running as admin, try installing module for the current user
+        else {
+            Write-Output "Installing PowerShell Module: SharePointPnPPowerShellOnline (CurrentUser)"
+            Install-Module -Name SharePointPnPPowerShellOnline -Force -AllowClobber -Confirm:$false -Scope CurrentUser 
+        }
+    }
+    catch {
+        Write-Error "Failed to automatically install the requisite SharePointPnPPowerShellOnline PowerShell module. Install the latest version of this module manually and then try again." -Exception $_.Exception
+        break
+    }
 }
 
 Import-Module -Name SharePointPnPPowerShellOnline -WarningAction Ignore
@@ -69,18 +83,31 @@ $tenant = [Microsoft.Online.SharePoint.TenantManagement.Office365Tenant]::new($c
 
 foreach ($externalSite in $sitesWithExternalSharing) {
     Write-Host "SITE: $($externalSite.Url)"
+    $totalExternalUserCount = $null
+    $message = "SUCCESS"
+    try {
+        $externalUsers = $tenant.GetExternalUsersForSite($externalSite.Url, 0, 1, "", [Microsoft.Online.SharePoint.TenantManagement.SortOrder]::Descending)   
+        $context.Load($externalUsers)
+        $context.ExecuteQuery()
 
-    $externalUsers = $tenant.GetExternalUsersForSite($externalSite.Url, 0, 1, "", [Microsoft.Online.SharePoint.TenantManagement.SortOrder]::Descending)
+        $totalExternalUserCount = $externalUsers.TotalUserCount
+    } 
+    catch {
+        $totalExternalUserCount = "UNKNOWN"
+        $message = $_.Exception.Message
 
-    $context.Load($externalUsers)
-    $context.ExecuteQuery()
+        Write-Host " -- ERROR RETRIEVING EXTERNAL USER COUNT --" -ForegroundColor Yellow
+        Write-Host $message -ForegroundColor Yellow
+        Write-Host
+    }
 		
     [PSCustomObject](@{
             SiteUrl                                  = $externalSite.Url
             SharingCapability                        = $externalSite.SharingCapability.ToString()
             ShowPeoplePickerSuggestionsForGuestUsers = $externalSite.ShowPeoplePickerSuggestionsForGuestUsers
-            TotalExternalUserCount                   = $externalUsers.TotalUserCount
-        }) | Select-Object -Property SiteUrl, SharingCapability, ShowPeoplePickerSuggestionsForGuestUsers, TotalExternalUserCount `
+            TotalExternalUserCount                   = $totalExternalUserCount
+            Message                                  = $message
+        }) | Select-Object -Property SiteUrl, SharingCapability, ShowPeoplePickerSuggestionsForGuestUsers, TotalExternalUserCount, Message `
     | Export-Csv -Path $csvName -NoTypeInformation -Append
 }
 
