@@ -1,3 +1,7 @@
-"webUrl"
-https://contoso.sharepoint.com/sites/group1
-https://contoso.sharepoint.com/sites/group2
+id,displayName,WebUrl,mail,createdDateTime,SizeGB,visibility,Owners
+aee50b03-0d49-4c41-8811-ec053a698e09,DemoGroup1,https://contoso.sharepoint.com/sites/DemoGroup1,DemoGroup1@contoso.onmicrosoft.com,2018-12-21T23:26:48Z,0,Private,admin@contoso.onmicrosoft.com
+8be16d2a-5d5e-49a8-b833-081da1655a19,DemoGroup2,https://contoso.sharepoint.com/sites/DemoGroup2,DemoGroup2@contoso.onmicrosoft.com,2018-12-21T23:26:54Z,0,Public,admin@contoso.onmicrosoft.com
+8821d01e-1cbb-43f2-a96e-fd76a9301d70,DemoGroup3,https://contoso.sharepoint.com/sites/DemoGroup3,DemoGroup3@contoso.onmicrosoft.com,2018-12-21T23:27:03Z,2,Private,admin@contoso.onmicrosoft.com
+e2bf85ca-bf27-4d74-8269-d563a508bc0f,DemoGroup4,https://contoso.sharepoint.com/sites/DemoGroup4,DemoGroup4@contoso.onmicrosoft.com,2018-12-21T23:27:10Z,100,Public,admin@contoso.onmicrosoft.com
+988e2d65-954c-42bb-a86e-8241329a13e0,DemoGroup5,https://contoso.sharepoint.com/sites/DemoGroup5,DemoGroup5@contoso.onmicrosoft.com,2018-12-21T23:27:23Z,40,Private,admin@contoso.onmicrosoft.com
+ca615d2c-7f6b-4689-af78-5c14f962be6a,DemoGroup6,https://contoso.sharepoint.com/sites/DemoGroup6,DemoGroup6@contoso.onmicrosoft.com,2018-12-21T23:27:37Z,10,Public,admin@contoso.onmicrosoft.com
