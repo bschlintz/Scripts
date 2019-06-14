@@ -43,7 +43,7 @@
  .EXAMPLE
   .\Create-DefaultListForms.ps1
  
-  Creates list forms for specified siteUrl and listTitle rows in a CSV file in the script directory called TargetListForms.csv
+  Creates list forms for specified siteUrl and listTitle rows in a CSV file in the script directory called Create-DefaultListForms-Sample.csv
 
  .EXAMPLE
   .\Create-DefaultListForms.ps1 -CSVPath C:\temp\targetlists.csv
@@ -51,7 +51,7 @@
   Creates list forms for specified siteUrl and listTitle rows in a CSV file located at C:\temp\targetlists.csv
 #>
 
-param($CSVPath = "$(Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)\TargetListForms.csv")
+param($CSVPath = "$(Split-Path -Parent -Path $MyInvocation.MyCommand.Definition)\Create-DefaultListForms-Sample.csv")
 
 #############################################
 
