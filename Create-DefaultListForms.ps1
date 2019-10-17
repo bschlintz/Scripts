@@ -30,7 +30,7 @@
   Expects a CSV file called TargetListForms.csv to be in the same directory as the script. 
   CSV should have a siteUrl and listTitle columns.
 
-  Tested with List Templates: 100, 102, 103, 104, 105, 106, 107, 108
+  Tested with List Templates: 100, 101, 102, 103, 104, 105, 106, 107, 108
   
   NOTE: This script requires the PowerShell module 'SharePointPnPPowerShellOnline' to be installed. If it is missing, the script will attempt to install it.
 
@@ -177,7 +177,19 @@ foreach ($row in $csvRows)
     $list = Get-PnPList $row.listTitle
     $listUrl = $list.RootFolder.ServerRelativeUrl
     
-    Create-DefaultListForm -List $list -FormUrl "$listUrl/DispForm.aspx" -FormType Display
-    Create-DefaultListForm -List $list -FormUrl "$listUrl/EditForm.aspx" -FormType Edit
-    Create-DefaultListForm -List $list -FormUrl "$listUrl/NewForm.aspx"  -FormType New
+    # Handle Document Library Types
+    if ($list.BaseType -eq [Microsoft.SharePoint.Client.BaseType]::DocumentLibrary) {
+        Write-Host " > Processing Library: $listUrl"
+        Create-DefaultListForm -List $list -FormUrl "$listUrl/Forms/Upload.aspx"   -FormType New
+        Create-DefaultListForm -List $list -FormUrl "$listUrl/Forms/DispForm.aspx" -FormType Display
+        Create-DefaultListForm -List $list -FormUrl "$listUrl/Forms/EditForm.aspx" -FormType Edit
+    }
+    
+    # Handle Generic List Types
+    else {
+        Write-Host " > Processing List: $listUrl"
+        Create-DefaultListForm -List $list -FormUrl "$listUrl/NewForm.aspx"  -FormType New
+        Create-DefaultListForm -List $list -FormUrl "$listUrl/DispForm.aspx" -FormType Display
+        Create-DefaultListForm -List $list -FormUrl "$listUrl/EditForm.aspx" -FormType Edit
+    }
 }
