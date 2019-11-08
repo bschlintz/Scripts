@@ -51,48 +51,45 @@ param
     [Parameter(Mandatory=$true)][bool]$ContributionToContentDiscoveryDisabled
 )
 
-if(!(get-package Microsoft.IdentityModel.Clients.ActiveDirectory -RequiredVersion 3.19.8))
-{
-Install-Package Microsoft.IdentityModel.Clients.ActiveDirectory -RequiredVersion 3.19.8 -Source 'https://www.nuget.org/api/v2' -Scope CurrentUser
-}
-
-# https://www.nuget.org/p ackages/Microsoft.IdentityModel.Clients.ActiveDirectory/ 
-$package = Get-Package Microsoft.IdentityModel.Clients.ActiveDirectory -RequiredVersion 3.19.8
-$packagePath = Split-Path $package.Source -Parent
-$dllPath = Join-Path -Path $packagePath -ChildPath "lib/net45/Microsoft.IdentityModel.Clients.ActiveDirectory.dll"
-Add-Type -Path $dllPath -ErrorAction Stop
-
-function Get-Token
+function Get-Token 
 {
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory=$true)][string]$Tenant,
-        [Parameter(Mandatory=$true)][System.Guid]$ClientID,
-        [Parameter(Mandatory=$true)][string]$ClientSecret,
-        [Parameter(Mandatory=$true)][string]$Resource
+        [Parameter(Mandatory = $true)][string]$Tenant,
+        [Parameter(Mandatory = $true)][System.Guid]$ClientID,
+        [Parameter(Mandatory = $true)][string]$ClientSecret,
+        [Parameter(Mandatory = $true)][string]$Resource
     )
-
-    begin
+    
+    begin 
     {
-        $redirectUri = New-Object System.Uri("urn:ietf:wg:oauth:2.0:oob")
-        $authority   = "https://login.microsoftonline.com/$Tenant"
-    }
-    process
-    {
-        try
-        {
-            $clientCredential = New-Object Microsoft.IdentityModel.Clients.ActiveDirectory.ClientCredential( $ClientID, $ClientSecret )
-            $authContext      = New-Object Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext( $authority )
-            $authContext.AcquireTokenAsync( $Resource, $clientcredential ).Result
+    }  
+    process {
+        $Body = @{
+            grant_type    = "client_credentials"
+            scope         = "$Resource/.default"
+            client_id     = $ClientID
+            client_secret = $ClientSecret
+        } 
+      
+        $RequestToken = @{
+            ContentType = 'application/x-www-form-urlencoded'
+            Method      = 'POST'
+            Body        = $Body
+            Uri         = "https://login.microsoftonline.com/$Tenant/oauth2/v2.0/token"
         }
-        catch
-        {
+  
+        try {
+            $response = Invoke-RestMethod @RequestToken
+        }
+        catch {
             Write-Error $_.Exception
         }
     }
-    end
+    end 
     {
+        $response
     }
 }
 
@@ -289,15 +286,13 @@ $clientSecret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"     # aka "Keys" in 
 # https://developer.microsoft.com/en-us/graph/docs/concepts/known_issues#json-batching
 $batchSize = 20
 
-if( -not $token -or $token.ExpiresOn.DateTime -lt (Get-Date) )
-{
-    $token = Get-Token -Tenant $tenant -ClientID $clientId -ClientSecret $clientSecret -Resource "https://graph.microsoft.com"
-}
+$token = $null
+$token = Get-Token -Tenant $tenant -ClientID $clientId -ClientSecret $clientSecret -Resource "https://graph.microsoft.com"
 
-if( $token.AccessToken )
+if( $token.access_token )
 {
     Write-Host "Fetching Users..."
-    $allUsers = Get-AllUsers -AccessToken $token.AccessToken | Select-Object -ExpandProperty userPrincipalName
+    $allUsers = Get-AllUsers -AccessToken $token.access_token | Select-Object -ExpandProperty userPrincipalName
 
     Write-Host "Splitting $($allUsers.Count) users into $([Math]::Ceiling($allUsers.Count / $batchSize)) batches..."
     $batches = Split-ArrayIntoChunks -Array $allUsers -ChunkSize $batchSize
@@ -319,7 +314,7 @@ if( $token.AccessToken )
 
             $batchPayload = CreateBatch-GetUserSettings -UserPrincipalNames $batch
 
-            $result = Process-GraphBatch -Payload $batchPayload -AccessToken $token.AccessToken
+            $result = Process-GraphBatch -Payload $batchPayload -AccessToken $token.access_token
 
             foreach ($batchResponse in $result.responses) 
             {
@@ -341,7 +336,7 @@ if( $token.AccessToken )
 
             $batchPayload = CreateBatch-UpdateUserSettings -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $ContributionToContentDiscoveryDisabled
     
-            Process-GraphBatch -Payload $batchPayload -AccessToken $token.AccessToken | Out-Null
+            Process-GraphBatch -Payload $batchPayload -AccessToken $token.access_token | Out-Null
         }
     }
 }
