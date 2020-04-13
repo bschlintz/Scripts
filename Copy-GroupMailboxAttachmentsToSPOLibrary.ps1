@@ -26,48 +26,6 @@ param
     [Parameter(Mandatory=$false)][string]$FolderName
 )
 
-function Get-Token 
-{
-    [CmdletBinding()]
-    param
-    (
-        [Parameter(Mandatory = $true)][string]$Tenant,
-        [Parameter(Mandatory = $true)][System.Guid]$ClientID,
-        [Parameter(Mandatory = $true)][string]$ClientSecret,
-        [Parameter(Mandatory = $true)][string]$Resource
-    )
-    
-    begin 
-    {
-    }  
-    process {
-        $Body = @{
-            grant_type    = "client_credentials"
-            scope         = "$Resource/.default"
-            client_id     = $ClientID
-            client_secret = $ClientSecret
-        } 
-      
-        $RequestToken = @{
-            ContentType = 'application/x-www-form-urlencoded'
-            Method      = 'POST'
-            Body        = $Body
-            Uri         = "https://login.microsoftonline.com/$Tenant/oauth2/v2.0/token"
-        }
-  
-        try {
-            $response = Invoke-RestMethod @RequestToken
-        }
-        catch {
-            Write-Error $_.Exception
-        }
-    }
-    end 
-    {
-        $response
-    }
-}
-
 function Get-AuthenticationHeaders
 {
     [CmdletBinding()]
@@ -222,36 +180,33 @@ function Get-Attachments
 }
 
 # script requires Group.Read.All
-# script requires Write to Library: <AppPermissionRequests AllowAppOnlyPolicy="true"><AppPermissionRequest Scope="http://sharepoint/content/sitecollection/web/list" Right="Write"/></AppPermissionRequests>
+# script requires user to have Read/Write access to target Document Library
 
-$tenant       = "contoso.onmicrosoft.com"
-$clientId     = "xxxxxxx-xxxx-xxxx-xxxx-xxxxxxx"                # aka "Application ID" in Azure Portal > Azure Active Directory > App Registrations
-$clientSecret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"     # aka "Keys" in Azure Portal > Azure Active Directory > App Registrations
+# Requires User Delegated Authentication to work with Group Conversations (app-only not supported)
+# See Known Issues: https://docs.microsoft.com/en-us/graph/known-issues#groups
 
-$token = $null
-$token = Get-Token -Tenant $tenant -ClientID $clientId -ClientSecret $clientSecret -Resource "https://graph.microsoft.com"
+Connect-PnPOnline -Scopes "Group.Read.All" -Url $SiteUrl -UseWebLogin
+$token = Get-PnPAccessToken
 
-Connect-PnPOnline -Url $SiteUrl -AppId $clientId -AppSecret $clientSecret
-
-if( -not $token -or -not $token.access_token ) 
+if( -not $token -or -not (Get-PnPWeb)) 
 {
     break
 }
 
-$conversations = Get-ConversationsWithAttachments -AccessToken $token.access_token -GroupId $GroupId
+$conversations = Get-ConversationsWithAttachments -AccessToken $token -GroupId $GroupId
 
 foreach ($conversation in $conversations) {
-    $threads = Get-Threads -AccessToken $token.access_token -GroupId $GroupId -ConversationId $conversation.id
+    $threads = Get-Threads -AccessToken $token -GroupId $GroupId -ConversationId $conversation.id
 
     Write-Host "Processing Conversation: $($conversation.topic)"
 
     $threadsWithAttachments = $threads | ? {$_.hasAttachments}
     foreach ($thread in $threadsWithAttachments) {
-        $posts = Get-Posts -AccessToken $token.access_token -GroupId $GroupId -ConversationId $conversation.id -ThreadId $thread.id
+        $posts = Get-Posts -AccessToken $token -GroupId $GroupId -ConversationId $conversation.id -ThreadId $thread.id
 
         $postsWithAttachments = $posts | ? {$_.hasAttachments}
         foreach ($post in $postsWithAttachments) {
-            $attachments = Get-Attachments -AccessToken $token.access_token -GroupId $GroupId -ConversationId $conversation.id -ThreadId $thread.id -PostId $post.id
+            $attachments = Get-Attachments -AccessToken $token -GroupId $GroupId -ConversationId $conversation.id -ThreadId $thread.id -PostId $post.id
 
             foreach ($attachment in $attachments) {
                 $bytes = [System.Convert]::FromBase64String($attachment.contentBytes)
@@ -259,8 +214,8 @@ foreach ($conversation in $conversations) {
                 $utcDateFormatted = (Get-Date $thread.lastDeliveredDateTime).ToUniversalTime().ToString("yyyy_MM_dd_HH_mm_ss")
                 $folderPath = "$LibraryName/$FolderName/$($thread.topic)_$utcDateFormatted"
 
-                Write-Host "  Uploading Attachment: $($attachment.name)"
-                Resolve-PnPFolder -SiteRelativePath $folderPath
+                Write-Host "  Uploading Attachment '$($attachment.name)' to '$folderPath'"
+                Resolve-PnPFolder -SiteRelativePath $folderPath | Out-Null
                 Add-PnPFile -FileName $attachment.name -Folder $folderPath -Stream $stream | Out-Null
             }
         }
