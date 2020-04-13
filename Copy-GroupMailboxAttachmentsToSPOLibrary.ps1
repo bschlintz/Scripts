@@ -62,6 +62,55 @@ param
     [Parameter(Mandatory=$false)][string]$FolderName = ""
 )
 
+
+# Adapted From: https://ridicurious.com/2019/02/01/retry-command-in-powershell/
+function Invoke-RestMethodWithRetry 
+{
+    [CmdletBinding()]
+    param (
+        [parameter(Mandatory, ValueFromPipeline)] 
+        [ValidateNotNullOrEmpty()]
+        [hashtable] $Params,
+        [int] $RetryCount = 5,
+        [int] $TimeoutInSecs = 10,
+        [string] $SuccessMessage = "Command executed successfuly!",
+        [string] $FailureMessage = "Failed to execute the command"
+    )
+        
+    process {
+        $Attempt = 1
+        $Flag = $true
+        
+        do {
+            try {
+                $PreviousPreference = $ErrorActionPreference
+                $ErrorActionPreference = 'Stop'
+                Invoke-RestMethod @Params -OutVariable Result
+                $ErrorActionPreference = $PreviousPreference
+
+                # flow control will execute the next line only if the command in the scriptblock executed without any errors
+                # if an error is thrown, flow control will go to the 'catch' block
+                Write-Verbose "$SuccessMessage `n"
+                $Flag = $false
+            }
+            catch {
+                if ($Attempt -gt $RetryCount) {
+                    Write-Verbose "$FailureMessage! Total retry attempts: $RetryCount"
+                    Write-Verbose "[Error Message] $($_.exception.message) `n"
+                    $Flag = $false
+                }
+                else {
+                    Write-Verbose "[$Attempt/$RetryCount] $FailureMessage. Retrying in $TimeoutInSecs seconds..."
+                    Start-Sleep -Seconds $TimeoutInSecs
+                    $Attempt = $Attempt + 1
+                }
+            }
+        }
+        While ($Flag)
+        
+    }
+}
+
 function Get-AuthenticationHeaders
 {
     [CmdletBinding()]
@@ -104,7 +153,7 @@ function Get-ConversationsWithAttachments
     {
         do
         {
-            $json = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET
+            $json = Invoke-RestMethodWithRetry @{ Uri = $uri; Headers = $headers; Method = "GET" }
             $conversations += $json.value
             $uri = $json.'@odata.nextLink'
         }
@@ -136,7 +185,7 @@ function Get-Threads
     {
         do
         {
-            $json = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET
+            $json = Invoke-RestMethodWithRetry @{ Uri = $uri; Headers = $headers; Method = "GET" }
             $threads += $json.value
             $uri = $json.'@odata.nextLink'
         }
@@ -169,7 +218,7 @@ function Get-Posts
     {
         do
         {
-            $json = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET
+            $json = Invoke-RestMethodWithRetry @{ Uri = $uri; Headers = $headers; Method = "GET" }
             $posts += $json.value
             $uri = $json.'@odata.nextLink'
         }
@@ -203,7 +252,8 @@ function Get-Attachments
     {
         do
         {
-            $json = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET
+            $json = Invoke-RestMethodWithRetry @{ Uri = $uri; Headers = $headers; Method = "GET" }
+            # $json = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET
             $attachments += $json.value
             $uri = $json.'@odata.nextLink'
         }
@@ -245,14 +295,22 @@ foreach ($conversation in $conversations) {
             $attachments = Get-Attachments -AccessToken $token -GroupId $GroupId -ConversationId $conversation.id -ThreadId $thread.id -PostId $post.id
 
             foreach ($attachment in $attachments) {
-                $bytes = [System.Convert]::FromBase64String($attachment.contentBytes)
-                $stream = [IO.MemoryStream]::new($bytes)
-                $utcDateFormatted = (Get-Date $thread.lastDeliveredDateTime).ToUniversalTime().ToString("yyyy_MM_dd_HH_mm_ss")
-                $folderPath = "$LibraryName/$FolderName/$($thread.topic)_$utcDateFormatted".Replace("//", "/")
-
-                Write-Host "  Uploading Attachment '$($attachment.name)' to '$folderPath'"
-                Resolve-PnPFolder -SiteRelativePath $folderPath | Out-Null
-                Add-PnPFile -FileName $attachment.name -Folder $folderPath -Stream $stream | Out-Null
+                $bytes = $null
+                $stream = $null
+                try {
+                    $bytes = [System.Convert]::FromBase64String($attachment.contentBytes)
+                    $stream = [IO.MemoryStream]::new($bytes)
+                    $utcDateFormatted = (Get-Date $thread.lastDeliveredDateTime).ToUniversalTime().ToString("yyyy_MM_dd_HH_mm_ss")
+                    $folderPath = "$LibraryName/$FolderName/$($thread.topic)_$utcDateFormatted".Replace("//", "/")
+    
+                    Write-Host "  Uploading Attachment '$($attachment.name)' to '$folderPath'"
+                    Resolve-PnPFolder -SiteRelativePath $folderPath | Out-Null
+                    Add-PnPFile -FileName $attachment.name -Folder $folderPath -Stream $stream | Out-Null
+                }
+                finally {
+                    $bytes = $null
+                    if ($stream) { $stream.Close() }
+                }
             }
         }
     }
