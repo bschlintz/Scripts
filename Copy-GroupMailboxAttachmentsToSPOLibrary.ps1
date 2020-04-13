@@ -17,13 +17,49 @@
  line at (800) 936-5200. 
 #>
 
+<#
+  .SYNOPSIS
+  Script will copy all attachments from all mail messages in an Office 365 Group's mailbox to a SharePoint document library.
+
+ .DESCRIPTION
+  Script will copy all attachments from all mail messages in an Office 365 Group's mailbox to a SharePoint document library.  
+  
+  NOTE: This script requires the PowerShell module 'SharePointPnPPowerShellOnline' to be installed. If it is missing, the script will attempt to install it.
+
+  .PARAMETER GroupId
+  Office 365 Group ID
+
+  .PARAMETER SiteUrl
+  SharePoint Site URL where the mail attachments will be uploaded to
+
+  .PARAMETER LibraryName
+  URL of the SharePoint Document Library where the attachments will be uploaded to
+
+  .PARAMETER FolderName
+  Optional folder name where the attachments should be uploaded to within target document library
+
+ .EXAMPLE
+  .\Copy-GroupMailboxAttachmentsToSPOLibrary.ps1 -GroupId "fc8f7128-587a-4b22-bf3a-7d142dd4fd32" -SiteUrl "https://contoso.sharepoint.com/sites/abc" -LibraryName "Attachments"
+ 
+  Uploads all file attachments from all mail in the specified Office 365 Group's mailbox. 
+  Attachments uploaded to a SharePoint site named 'abc' to a library named 'Attachments'.
+  A sub-folder with the subject name and timestamp will be created where the attachments will be uploaded into.
+
+ .EXAMPLE
+  .\Copy-GroupMailboxAttachmentsToSPOLibrary.ps1 -GroupId "fc8f7128-587a-4b22-bf3a-7d142dd4fd32" -SiteUrl "https://contoso.sharepoint.com/sites/abc" -LibraryName "Attachments" -FolderName "GroupXYZ"
+ 
+  Uploads all file attachments from all mail in the specified Office 365 Group's mailbox. 
+  Attachments uploaded to a SharePoint site named 'abc' to a library named 'Attachments' within a sub-folder called 'GroupXYZ'
+  Another sub-folder with the subject name and timestamp will be created where the attachments will be uploaded into.
+#>
+
 # Script Parameters
 param 
 (
-    [Parameter(Mandatory=$false)][string]$GroupId,
-    [Parameter(Mandatory=$false)][string]$SiteUrl,
-    [Parameter(Mandatory=$false)][string]$LibraryName,
-    [Parameter(Mandatory=$false)][string]$FolderName
+    [Parameter(Mandatory=$true)][string]$GroupId,
+    [Parameter(Mandatory=$true)][string]$SiteUrl,
+    [Parameter(Mandatory=$true)][string]$LibraryName,
+    [Parameter(Mandatory=$false)][string]$FolderName = ""
 )
 
 function Get-AuthenticationHeaders
@@ -212,7 +248,7 @@ foreach ($conversation in $conversations) {
                 $bytes = [System.Convert]::FromBase64String($attachment.contentBytes)
                 $stream = [IO.MemoryStream]::new($bytes)
                 $utcDateFormatted = (Get-Date $thread.lastDeliveredDateTime).ToUniversalTime().ToString("yyyy_MM_dd_HH_mm_ss")
-                $folderPath = "$LibraryName/$FolderName/$($thread.topic)_$utcDateFormatted"
+                $folderPath = "$LibraryName/$FolderName/$($thread.topic)_$utcDateFormatted".Replace("//", "/")
 
                 Write-Host "  Uploading Attachment '$($attachment.name)' to '$folderPath'"
                 Resolve-PnPFolder -SiteRelativePath $folderPath | Out-Null
