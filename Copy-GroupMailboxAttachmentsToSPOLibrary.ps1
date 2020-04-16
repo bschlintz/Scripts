@@ -30,10 +30,10 @@
   Office 365 Group ID
 
   .PARAMETER SiteUrl
-  SharePoint Site URL where the mail attachments will be uploaded to
+  Optional. SharePoint Site URL where the mail attachments will be uploaded to. Defaults to Office 365 group's SharePoint site
 
   .PARAMETER LibraryName
-  URL of the SharePoint Document Library where the attachments will be uploaded to
+  Optional URL of the SharePoint Document Library where the attachments will be uploaded to. Defaults to 'Shared Documents'
 
   .PARAMETER FolderName
   Optional folder name where the attachments should be uploaded to within target document library
@@ -57,8 +57,8 @@
 param 
 (
     [Parameter(Mandatory=$true)][string]$GroupId,
-    [Parameter(Mandatory=$true)][string]$SiteUrl,
-    [Parameter(Mandatory=$true)][string]$LibraryName,
+    [Parameter(Mandatory=$false)][string]$SiteUrl,
+    [Parameter(Mandatory=$false)][string]$LibraryName = "Shared Documents",
     [Parameter(Mandatory=$false)][string]$FolderName = ""
 )
 
@@ -251,7 +251,6 @@ function Get-Attachments
         do
         {
             $json = Invoke-RestMethodWithRetry @{ Uri = $uri; Headers = $headers; Method = "GET" }
-            # $json = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET
             $attachments += $json.value
             $uri = $json.'@odata.nextLink'
         }
@@ -269,11 +268,20 @@ function Get-Attachments
 # Requires User Delegated Authentication to work with Group Conversations (app-only not supported)
 # See Known Issues: https://docs.microsoft.com/en-us/graph/known-issues#groups
 
-Connect-PnPOnline -Scopes "Group.Read.All" -Url $SiteUrl -UseWebLogin
+if ( -not $SiteUrl ) {
+    Connect-PnPOnline -Scopes "Group.Read.All"
+
+    $group = Get-PnPUnifiedGroup -Identity $GroupId
+
+    Connect-PnPOnline -Url $group.SiteUrl -UseWebLogin
+}
+else {
+    Connect-PnPOnline -Scopes "Group.Read.All" -Url $SiteUrl -UseWebLogin
+}
+
 $token = Get-PnPAccessToken
 
-if( -not $token -or -not (Get-PnPWeb)) 
-{
+if( -not $token -or ($SiteUrl -and -not (Get-PnPWeb)) ) {
     break
 }
 
