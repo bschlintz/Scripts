@@ -19,24 +19,34 @@
 
 <#
   .SYNOPSIS
-  Script will copy all attachments from all mail messages in an Office 365 Group's mailbox to a SharePoint document library.
+  Script will copy all attachments from all mail messages in an Office 365 Group's mailbox to a SharePoint document library. 
+  Supports one group by specifying individual parameters or multiple groups by CSV.
 
  .DESCRIPTION
-  Script will copy all attachments from all mail messages in an Office 365 Group's mailbox to a SharePoint document library.  
+  Script will copy all attachments from all mail messages in an Office 365 Group's mailbox to a SharePoint document library.
+  Supports one group by specifying individual parameters or multiple groups by CSV.  
   
-  NOTE: This script requires the PowerShell module 'SharePointPnPPowerShellOnline' to be installed. If it is missing, the script will attempt to install it.
+  NOTE: This script requires the PowerShell module 'SharePointPnPPowerShellOnline' to be installed. http://aka.ms/pnppowershell
 
   .PARAMETER GroupId
-  Office 365 Group ID
+  Office 365 Group ID. Required for processing a single Group. 
 
   .PARAMETER SiteUrl
-  Optional. SharePoint Site URL where the mail attachments will be uploaded to. Defaults to Office 365 group's SharePoint site
+  Optional. SharePoint Site URL where the mail attachments will be uploaded to. Defaults to Office 365 group's SharePoint site.
 
   .PARAMETER LibraryName
   Optional URL of the SharePoint Document Library where the attachments will be uploaded to. Defaults to 'Shared Documents'
 
   .PARAMETER FolderName
   Optional folder name where the attachments should be uploaded to within target document library
+
+  .PARAMETER CSVPath
+  CSV file to process multiple Office 365 Groups. 
+  CSV should have columns 'id', 'siteUrl', 'libraryName' and 'folderName'. Only the 'id' column is required.
+  
+  If siteUrl is not specified, default will be the Office 365 Group's SharePoint site.
+  If libraryName is not specified, default will be 'Shared Documents' (present on every Office 365 Group SharePoint site by default).
+  If folderName is not specified, attachments will be uploaded to folders at the root of the library by email subject.
 
  .EXAMPLE
   .\Copy-GroupMailboxAttachmentsToSPOLibrary.ps1 -GroupId "fc8f7128-587a-4b22-bf3a-7d142dd4fd32" -SiteUrl "https://contoso.sharepoint.com/sites/abc" -LibraryName "Attachments"
@@ -51,15 +61,22 @@
   Uploads all file attachments from all mail in the specified Office 365 Group's mailbox. 
   Attachments uploaded to a SharePoint site named 'abc' to a library named 'Attachments' within a sub-folder called 'GroupXYZ'
   Another sub-folder with the subject name and timestamp will be created where the attachments will be uploaded into.
+
+  .EXAMPLE
+   .\Copy-GroupMailboxAttachmentsToSPOLibrary.ps1 -CSVPath .\Copy-GroupMailboxAttachmentsToSPOLibrary-TargetGroups.csv
+
+   Processes all rows in the CSV file describing an Office 365 Group's ID and additional options for the location of the processed attachments.
+   Uploads all file attachments from all mail in the specified Office 365 Group's mailbox.    
 #>
 
 # Script Parameters
 param 
 (
-    [Parameter(Mandatory=$true)][string]$GroupId,
-    [Parameter(Mandatory=$false)][string]$SiteUrl,
-    [Parameter(Mandatory=$false)][string]$LibraryName = "Shared Documents",
-    [Parameter(Mandatory=$false)][string]$FolderName = ""
+    [Parameter(Mandatory=$true,ParameterSetName="OneGroup")][string]$GroupId,
+    [Parameter(Mandatory=$false,ParameterSetName="OneGroup")][string]$SiteUrl,
+    [Parameter(Mandatory=$false,ParameterSetName="OneGroup")][string]$LibraryName = "Shared Documents",
+    [Parameter(Mandatory=$false,ParameterSetName="OneGroup")][string]$FolderName = "",
+    [Parameter(Mandatory=$true,ParameterSetName="MultipleGroups")][string]$CSVPath
 )
 
 
@@ -268,56 +285,120 @@ function Get-Attachments
 # Requires User Delegated Authentication to work with Group Conversations (app-only not supported)
 # See Known Issues: https://docs.microsoft.com/en-us/graph/known-issues#groups
 
-if ( -not $SiteUrl ) {
-    Connect-PnPOnline -Scopes "Group.Read.All"
 
-    $group = Get-PnPUnifiedGroup -Identity $GroupId
-
-    Connect-PnPOnline -Url $group.SiteUrl -UseWebLogin
+# Ensure we have a GroupId or we have a valid CSV Path
+if ( -not $GroupId -and -not (Test-Path $CSVPath) ) { 
+    break 
 }
+
+$GroupsToProcess = @()
+
+# Process Single Group
+if ( $GroupId ) {
+    $GroupsToProcess += @{
+        GroupId = $GroupId
+        SiteUrl = $SiteUrl
+        LibraryName = $LibraryName
+        FolderName = $FolderName
+    }
+}
+# Process Multiple Groups from CSV
 else {
-    Connect-PnPOnline -Scopes "Group.Read.All" -Url $SiteUrl -UseWebLogin
+    $GroupsCSV = ConvertFrom-Csv (Get-Content $CSVPath)
+
+    if ($null -eq $GroupsCSV) {
+        break
+    }
+
+    foreach ($CSVRow in $GroupsCSV) {
+        if ($CSVRow.id) {
+            $GroupsToProcess += @{
+                GroupId =       $CSVRow.id
+                SiteUrl =       if ($CSVRow.siteUrl) { $CSVRow.siteUrl } else { "" }
+                LibraryName =   if ($CSVRow.libraryName) { $CSVRow.libraryName } else { "Shared Documents" }
+                FolderName =    if ($CSVRow.folderName) { $CSVRow.folderName } else { "" }
+            }
+        }
+    }
 }
 
-$token = Get-PnPAccessToken
+$token = $null
 
-if( -not $token -or ($SiteUrl -and -not (Get-PnPWeb)) ) {
-    break
-}
+foreach ($Current in $GroupsToProcess) {
+    Write-Host "Current Group: $($Current.GroupId)" -ForegroundColor Green
 
-$conversations = Get-ConversationsWithAttachments -AccessToken $token -GroupId $GroupId
+    $groupSiteUrl = $null
+    if ( -not $Current.SiteUrl ) {
+        if ( -not $token ) {
+            Connect-PnPOnline -Scopes "Group.Read.All"
+        }
 
-foreach ($conversation in $conversations) {
-    $threads = Get-Threads -AccessToken $token -GroupId $GroupId -ConversationId $conversation.id
+        $group = Get-PnPUnifiedGroup -Identity $Current.GroupId
+        $groupSiteUrl = $group.SiteUrl
+    }
+    elseif ( -not $token ) {
+        Connect-PnPOnline -Scopes "Group.Read.All" -Url $Current.SiteUrl -UseWebLogin
+    }
 
-    Write-Host "Processing Conversation: $($conversation.topic)"
+    $token = Get-PnPAccessToken
 
-    $threadsWithAttachments = $threads | ? {$_.hasAttachments}
-    foreach ($thread in $threadsWithAttachments) {
-        $posts = Get-Posts -AccessToken $token -GroupId $GroupId -ConversationId $conversation.id -ThreadId $thread.id
+    if( -not $token -or ($Current.SiteUrl -and -not (Get-PnPWeb)) ) {
+        break
+    }
 
-        $postsWithAttachments = $posts | ? {$_.hasAttachments}
-        foreach ($post in $postsWithAttachments) {
-            $attachments = Get-Attachments -AccessToken $token -GroupId $GroupId -ConversationId $conversation.id -ThreadId $thread.id -PostId $post.id
+    $conversations = Get-ConversationsWithAttachments -AccessToken $token -GroupId $Current.GroupId
+    $hasEnsuredSiteAndLibraryExists = $false
 
-            foreach ($attachment in $attachments) {
-                $bytes = $null
-                $stream = $null
-                try {
-                    $bytes = [System.Convert]::FromBase64String($attachment.contentBytes)
-                    $stream = [IO.MemoryStream]::new($bytes)
-                    $utcDateFormatted = (Get-Date $thread.lastDeliveredDateTime).ToUniversalTime().ToString("yyyy_MM_dd_HH_mm_ss")
-                    $folderPath = "$LibraryName/$FolderName/$($thread.topic)_$utcDateFormatted".Replace("//", "/")
-    
-                    Write-Host "  Uploading Attachment '$($attachment.name)' to '$folderPath'"
-                    Resolve-PnPFolder -SiteRelativePath $folderPath | Out-Null
-                    Add-PnPFile -FileName $attachment.name -Folder $folderPath -Stream $stream | Out-Null
+    foreach ($conversation in $conversations) {
+        $threads = Get-Threads -AccessToken $token -GroupId $Current.GroupId -ConversationId $conversation.id
+
+        Write-Host "  Conversation: $($conversation.topic)"
+
+        $threadsWithAttachments = $threads | ? {$_.hasAttachments}
+        foreach ($thread in $threadsWithAttachments) {
+            $posts = Get-Posts -AccessToken $token -GroupId $Current.GroupId -ConversationId $conversation.id -ThreadId $thread.id
+
+            $postsWithAttachments = $posts | ? {$_.hasAttachments}
+            foreach ($post in $postsWithAttachments) {
+                $attachments = Get-Attachments -AccessToken $token -GroupId $Current.GroupId -ConversationId $conversation.id -ThreadId $thread.id -PostId $post.id
+
+                if ($attachments -and $attachments.Length -gt 0 -and -not $hasEnsuredSiteAndLibraryExists) {
+
+                    try { Get-PnPConnection | Out-Null } catch { Connect-PnPOnline -Url $groupSiteUrl -UseWebLogin }
+
+                    $existingLibrary = Get-PnPList $Current.LibraryName
+
+                    if ($null -eq $existingLibrary) {
+                        New-PnPList -Title $Current.LibraryName -Template DocumentLibrary
+                    }
+
+                    $hasEnsuredSiteAndLibraryExists = $true
                 }
-                finally {
+
+                $hasEnsuredFolderExists = $false
+                foreach ($attachment in $attachments) {
                     $bytes = $null
-                    if ($stream) { $stream.Close() }
+                    $stream = $null
+                    try {
+                        $bytes = [System.Convert]::FromBase64String($attachment.contentBytes)
+                        $stream = [IO.MemoryStream]::new($bytes)
+                        $utcDateFormatted = (Get-Date $thread.lastDeliveredDateTime).ToUniversalTime().ToString("yyyyMMddHHmmss")
+                        $folderPath = "$($Current.LibraryName)/$($Current.FolderName)/$($thread.topic)_$utcDateFormatted".Replace("//", "/")
+        
+                        Write-Host "    Uploading Attachment: '$($attachment.name)' to '$((Get-PnPWeb).ServerRelativeUrl)/$folderPath'"
+                        if ( -not $hasEnsuredFolderExists ) {
+                            Resolve-PnPFolder -SiteRelativePath $folderPath | Out-Null
+                            $hasEnsuredFolderExists = $true
+                        }
+                        Add-PnPFile -FileName $attachment.name -Folder $folderPath -Stream $stream | Out-Null
+                    }
+                    finally {
+                        $bytes = $null
+                        if ($stream) { $stream.Close() }
+                    }
                 }
             }
         }
     }
+    Write-Host
 }
