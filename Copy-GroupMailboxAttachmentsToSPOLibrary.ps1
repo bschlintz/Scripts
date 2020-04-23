@@ -362,14 +362,14 @@ foreach ($Current in $GroupsToProcess) {
             foreach ($post in $postsWithAttachments) {
                 $attachments = Get-Attachments -AccessToken $token -GroupId $Current.GroupId -ConversationId $conversation.id -ThreadId $thread.id -PostId $post.id
 
-                if ($attachments -and $attachments.Length -gt 0 -and -not $hasEnsuredSiteAndLibraryExists) {
+                if ($attachments -and @($attachments).Count -gt 0 -and -not $hasEnsuredSiteAndLibraryExists) {
 
                     try { Get-PnPConnection | Out-Null } catch { Connect-PnPOnline -Url $groupSiteUrl -UseWebLogin }
 
                     $existingLibrary = Get-PnPList $Current.LibraryName
 
                     if ($null -eq $existingLibrary) {
-                        New-PnPList -Title $Current.LibraryName -Template DocumentLibrary
+                        New-PnPList -Title $Current.LibraryName -Template DocumentLibrary | Out-Null
                     }
 
                     $hasEnsuredSiteAndLibraryExists = $true
