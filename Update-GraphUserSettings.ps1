@@ -43,6 +43,9 @@
   Provide an Azure AD group display name containing the target users. The group may be a security group, distribution group of Office 365 group. 
   The app registration must have Group.Read.All permission to use this parameter.
 
+ .PARAMETER TargetUserName
+  Provide one or more Azure AD User Principal Names as the target users.
+
  .EXAMPLE
   .\Update-GraphUserSettings.ps1 -ContributionToContentDiscoveryDisabled $true -ReportOnly -AllUsers
  
@@ -59,9 +62,14 @@
   Update the users listed in the CSV file to set ContributionToContentDiscoveryDisabled to TRUE.
  
  .EXAMPLE
-  .\Update-GraphUserSettings.ps1 -ContributionToContentDiscoveryDisabled $true -TargetUsersAADGroupName "Germany Employees"
+  .\Update-GraphUserSettings.ps1 -ContributionToContentDiscoveryDisabled $true -TargetUsersAADGroupName 'Germany Employees'
 
   Update the users in the 'Germany Employees' distribution group to set ContributionToContentDiscoveryDisabled to TRUE.
+
+  .EXAMPLE
+  .\Update-GraphUserSettings.ps1 -ContributionToContentDiscoveryDisabled $false -TargetUserName 'paul.muster@domain.tld','sophy.sample@domain.tld'
+
+  Update the users listed to set ContributionToContentDiscoveryDisabled to FALSE.
 #>
 
 # Script Parameters
@@ -69,9 +77,10 @@ param
 (
     [Parameter(Mandatory=$false)][switch]$ReportOnly,
     [Parameter(Mandatory=$true)][bool]$ContributionToContentDiscoveryDisabled,
-    [Parameter(Mandatory=$false,ParameterSetName="AllUsers")][switch]$AllUsers,
-    [Parameter(Mandatory=$false,ParameterSetName="UsersFromCsv")][string]$TargetUsersCsvPath,
-    [Parameter(Mandatory=$false,ParameterSetName="UsersFromGroup")][string]$TargetUsersAADGroupName
+    [Parameter(Mandatory=$false,ParameterSetName='AllUsers')][switch]$AllUsers,
+    [Parameter(Mandatory=$false,ParameterSetName='UsersFromCsv')][string]$TargetUsersCsvPath,
+    [Parameter(Mandatory=$false,ParameterSetName='UsersFromGroup')][string]$TargetUsersAADGroupName,
+    [Parameter(Mandatory=$false,ParameterSetName='UserPrincipalName')][string[]]$TargetUserName
 )
 
 function Get-Token 
@@ -79,7 +88,7 @@ function Get-Token
     [CmdletBinding()]
     param
     (
-        [Parameter(Mandatory = $true)][string]$Tenant,
+        [Parameter(Mandatory = $true)][string]$TenantID,
         [Parameter(Mandatory = $true)][System.Guid]$ClientID,
         [Parameter(Mandatory = $true)][string]$ClientSecret,
         [Parameter(Mandatory = $true)][string]$Resource
@@ -90,7 +99,7 @@ function Get-Token
     }  
     process {
         $Body = @{
-            grant_type    = "client_credentials"
+            grant_type    = 'client_credentials'
             scope         = "$Resource/.default"
             client_id     = $ClientID
             client_secret = $ClientSecret
@@ -100,7 +109,7 @@ function Get-Token
             ContentType = 'application/x-www-form-urlencoded'
             Method      = 'POST'
             Body        = $Body
-            Uri         = "https://login.microsoftonline.com/$Tenant/oauth2/v2.0/token"
+            Uri         = "https://login.microsoftonline.com/$TenantID/oauth2/v2.0/token"
         }
   
         try {
@@ -178,7 +187,6 @@ function Get-AllUsers
     process
     {
         # get all the users
-
             do
             {
                 $json = Invoke-RestMethod -Uri $uri -Headers $headers -Method GET
@@ -212,7 +220,6 @@ function Get-AllUsersInGroup
     process
     {
         # get group id
-
             $groupJson = Invoke-RestMethod -Uri $getGroupIdUri -Headers $headers -Method GET
 
         # validate we have one matching group
@@ -230,7 +237,6 @@ function Get-AllUsersInGroup
             else {
                 Write-Error "Insufficient permissions or no group exists with display name '$GroupDisplayName'"
             }
-            
         
         # get all users in the group
 
@@ -243,11 +249,10 @@ function Get-AllUsersInGroup
                     $users += $groupUsersJson.value
                     $getGroupMembersUpnUri = $groupUsersJson.'@odata.nextLink'
                 }
-                while( $uri )
+                while( $getGroupMembersUpnUri )
             }
 
         # remove users that are guests
-
             $users = $users | Where-Object {$_.userType -eq 'Member'}
     }
     end
@@ -271,16 +276,16 @@ function CreateBatch-UpdateUserSettings
     process
     {
         @{
-            "requests" = @(foreach($userPrincipalName in $UserPrincipalNames) { 
+            'requests' = @(foreach($userPrincipalName in $UserPrincipalNames) { 
                 @{
-                    "id" = $userPrincipalName
-                    "url" = "/users/$userPrincipalName/settings"
-                    "method" = "PATCH"
-                    "headers" = @{
-                        "Content-Type" = "application/json"
+                    'id' = $userPrincipalName
+                    'url' = "/users/$userPrincipalName/settings"
+                    'method' = 'PATCH'
+                    'headers' = @{
+                        'Content-Type' = 'application/json'
                     }
-                    "body" = @{
-                        "contributionToContentDiscoveryDisabled" = $ContributionToContentDiscoveryDisabled
+                    'body' = @{
+                        'contributionToContentDiscoveryDisabled' = $ContributionToContentDiscoveryDisabled
                     }
                 }
             })
@@ -305,13 +310,13 @@ function CreateBatch-GetUserSettings
     process
     {
         @{
-            "requests" = @(foreach($userPrincipalName in $UserPrincipalNames) { 
+            'requests' = @(foreach($userPrincipalName in $UserPrincipalNames) { 
                 @{
-                    "id" = $userPrincipalName
-                    "url" = "/users/$userPrincipalName/settings"
-                    "method" = "GET"
-                    "headers" = @{
-                        "Content-Type" = "application/json"
+                    'id' = $userPrincipalName
+                    'url' = "/users/$userPrincipalName/settings"
+                    'method' = 'GET'
+                    'headers' = @{
+                        'Content-Type' = 'application/json'
                     }
                 }
             })
@@ -341,7 +346,6 @@ function Process-GraphBatch
         try
         {
             $response = Invoke-RestMethod -Uri $uri -Headers $headers -Body $Payload -Method Post
-
             foreach ($batchResponse in $response.responses) 
             {
                 if ($batchResponse.status -ge 400)
@@ -361,20 +365,19 @@ function Process-GraphBatch
     }
 }
 
-
 # script requires User.ReadWrite.All 
 # script requires Group.Read.All if using the -TargetUsersAADGroupName parameter (optional)
 
-$tenant       = "contoso.onmicrosoft.com"
-$clientId     = "xxxxxxx-xxxx-xxxx-xxxx-xxxxxxx"                # aka "Application ID" in Azure Portal > Azure Active Directory > App Registrations
-$clientSecret = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"     # aka "Keys" in Azure Portal > Azure Active Directory > App Registrations
+$tenantID     = 'xxxxxxxx-xxx-xxxxxxx-xxxxxxxxxxxx'     # aka Directory (tenant) ID in Azure Portal > Azure Active Directory > App Registrations
+$clientId     = 'xxx-xxxxx-xxxx-xxxxxxxxxxx-xxxxxx'     # aka 'Application ID' in Azure Portal > Azure Active Directory > App Registrations
+$clientSecret = 'xxxxxx-xxxxxx-xxx-xxxxxxxx-xxxx'       # aka 'Keys' in Azure Portal > Azure Active Directory > App Registrations
 
 # Graph $batch limit is 20
 # https://developer.microsoft.com/en-us/graph/docs/concepts/known_issues#json-batching
 $batchSize = 20
 
 $token = $null
-$token = Get-Token -Tenant $tenant -ClientID $clientId -ClientSecret $clientSecret -Resource "https://graph.microsoft.com"
+$token = Get-Token -Tenant $tenantID -ClientID $clientId -ClientSecret $clientSecret -Resource 'https://graph.microsoft.com'
 
 if( -not $token -or -not $token.access_token ) 
 {
@@ -384,14 +387,14 @@ if( -not $token -or -not $token.access_token )
 $targetUsers = @()
 switch ($PSCmdlet.ParameterSetName)
 {
-    "AllUsers" {
-        Write-Host "Fetching All Users from Microsoft Graph..."
+    'AllUsers' {
+        Write-Host 'Fetching All Users from Microsoft Graph...'
         $targetUsers = Get-AllUsers -AccessToken $token.access_token | Select-Object -ExpandProperty userPrincipalName
         break
     }
 
-    "UsersFromCsv" {
-        Write-Host "Fetching Target Users from Csv..."
+    'UsersFromCsv' {
+        Write-Host 'Fetching Target Users from Csv...'
         if (Test-Path $TargetUsersCsvPath) {
             $userCsvRows = ConvertFrom-Csv (Get-Content $TargetUsersCsvPath)
             foreach ($user in $userCsvRows) {
@@ -401,9 +404,14 @@ switch ($PSCmdlet.ParameterSetName)
         break
     }
 
-    "UsersFromGroup" {
-        Write-Host "Fetching Target Users in AAD Group from Microsoft Graph..."
+    'UsersFromGroup' {
+        Write-Host 'Fetching Target Users in AAD Group from Microsoft Graph...'
         $targetUsers = Get-AllUsersInGroup -GroupDisplayName $TargetUsersAADGroupName -AccessToken $token.access_token | Select-Object -ExpandProperty userPrincipalName
+        break
+    }
+    'UserPrincipalName' {
+        Write-Host 'Using given Target Users...'
+        $targetUsers = $TargetUserName
         break
     }
 }
@@ -419,7 +427,7 @@ $batches = Split-ArrayIntoChunks -Array $targetUsers -ChunkSize $batchSize
 if ($ReportOnly)
 {
     # Remove existing CSV if there is one on -ReportOnly mode
-    Remove-Item -Path "DelveUserSettingsReport.csv" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'DelveUserSettingsReport.csv' -Force -ErrorAction SilentlyContinue
 }
 
 # Iterate each batch of users to create Graph $batch JSON payload
@@ -430,31 +438,26 @@ for ($idx = 0; $idx -lt $batches.Length; $idx++)
     if ($ReportOnly)
     {
         Write-Host "Processing Batch: $($idx + 1) of $($batches.Length) [Batch Size: $($batch.Count)]`t-ReportOnly"
-
         $batchPayload = CreateBatch-GetUserSettings -UserPrincipalNames $batch
-
         $result = Process-GraphBatch -Payload $batchPayload -AccessToken $token.access_token
-
         foreach ($batchResponse in $result.responses) 
         {
             $userPrincipalName = $batchResponse.id
             $currentSetting = $batchResponse.body.contributionToContentDiscoveryDisabled
-
-            if ($null -ne $currentSetting -and $currentSetting -ne $ContributionToContentDiscoveryDisabled)
+            if ($null -eq $currentSetting)
             {
-                [PSCustomObject] @{
-                    UserPrincipalName = $userPrincipalName
-                    ContributionToContentDiscoveryDisabled = $currentSetting
-                } | Export-Csv -Path "DelveUserSettingsReport.csv" -NoTypeInformation -Append
+                $currentSetting = 'Check Account'
             }
+            [PSCustomObject] @{
+                UserPrincipalName = $userPrincipalName
+                ContributionToContentDiscoveryDisabled = $currentSetting
+            } | Export-Csv -Path 'DelveUserSettingsReport.csv' -NoTypeInformation -Append
         }
     }
     else 
     {
         Write-Host "Processing Batch: $($idx + 1) of $($batches.Length) [Batch Size: $($batch.Count)]"
-
         $batchPayload = CreateBatch-UpdateUserSettings -UserPrincipalNames $batch -ContributionToContentDiscoveryDisabled $ContributionToContentDiscoveryDisabled
-
         Process-GraphBatch -Payload $batchPayload -AccessToken $token.access_token | Out-Null
     }
 }
